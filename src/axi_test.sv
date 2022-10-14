@@ -762,6 +762,7 @@ package axi_test;
 
     struct packed {
       int unsigned len  ;
+      int unsigned size ;
       int unsigned cprob;
     } traffic_shape[$];
     int unsigned max_cprob;
@@ -808,11 +809,11 @@ package axi_test;
       mem_map.push_back({addr_begin, addr_end, mem_type});
     endfunction
 
-    function void add_traffic_shaping(input int unsigned len, input int unsigned freq);
+    function void add_traffic_shaping(input int unsigned len, input int unsigned size, input int unsigned freq);
       if (traffic_shape.size() == 0)
-        traffic_shape.push_back({len, freq});
+        traffic_shape.push_back({len, size, freq});
       else
-        traffic_shape.push_back({len, traffic_shape[$].cprob + freq});
+        traffic_shape.push_back({len, size, traffic_shape[$].cprob + freq});
 
       max_cprob = traffic_shape[$].cprob;
     endfunction : add_traffic_shaping
@@ -830,6 +831,7 @@ package axi_test;
       automatic int unsigned mem_region_idx;
       automatic mem_region_t mem_region;
       automatic int cprob;
+      automatic bit fixed_size;
 
       // No memory regions defined
       if (mem_map.size() == 0) begin
@@ -856,6 +858,7 @@ package axi_test;
       ax_beat.ax_cache = is_read ? axi_pkg::get_arcache(mem_region.mem_type) : axi_pkg::get_awcache(mem_region.mem_type);
       // Randomize beat size.
       if (TRAFFIC_SHAPING) begin
+        fixed_size = 0;
         rand_success = std::randomize(cprob) with {
           cprob >= 0; cprob < max_cprob;
         }; assert(rand_success);
@@ -866,17 +869,27 @@ package axi_test;
             if (ax_beat.ax_burst == BURST_WRAP) begin
               assert (len inside {len_t'(1), len_t'(3), len_t'(7), len_t'(15)});
             end
+            if (traffic_shape[i].size!=-1) begin
+               fixed_size = 1;
+               size = traffic_shape[i].size;
+               assert( (2**size <= AXI_STRB_WIDTH) && (2**size <= len) ) else $fatal("Illegal fixed size and len");
+            end
             break;
           end
 
         // Randomize address.  Make sure that the burst does not cross a 4KiB boundary.
         forever begin
-          rand_success = std::randomize(size) with {
-            2**size <= AXI_STRB_WIDTH;
-            2**size <= len;
-          }; assert(rand_success);
+          if(~fixed_size) begin
+             rand_success = std::randomize(size) with {
+               2**size <= AXI_STRB_WIDTH;
+               2**size <= len;
+             }; assert(rand_success);
+             ax_beat.ax_len = ((len + (1 << size) - 1) >> size) - 1;
+          end else begin
+             ax_beat.ax_len = len;
+          end
+
           ax_beat.ax_size = size;
-          ax_beat.ax_len = ((len + (1 << size) - 1) >> size) - 1;
 
           rand_success = std::randomize(addr) with {
             addr >= mem_region.addr_begin;
@@ -893,7 +906,8 @@ package axi_test;
               break;
             end
           end
-        end
+       end
+
       end else begin
         // Randomize address.  Make sure that the burst does not cross a 4KiB boundary.
         forever begin
@@ -1867,6 +1881,624 @@ package axi_test;
     endtask
   endclass
 
+  /// AXI Slv port tracer.
+  class axi_tracer #(
+    /// AXI4+ATOP ID width
+    parameter int unsigned IW = 0,
+    /// AXI4+ATOP address width
+    parameter int unsigned AW = 0,
+    /// AXI4+ATOP data width
+    parameter int unsigned DW = 0,
+    /// AXI4+ATOP user width
+    parameter int unsigned UW = 0,
+    /// Stimuli test time
+    parameter time         TT = 0ns
+  );
+
+    typedef logic [IW-1:0] ax_id_t;
+    typedef axi_pkg::len_t ax_len_t;
+
+    typedef struct {
+       ax_id_t ax_id;
+       ax_len_t ax_len;
+       int unsigned num_cycle_acc;
+       int unsigned num_cycle_com;
+       real         chan_util;
+    } ax_trace_t;
+
+    ax_trace_t ax_transactions[$];
+    ax_id_t    aw_waiting_id[$];
+    ax_id_t    ar_waiting_id[$];
+
+    int unsigned   tracer_id;
+    virtual AXI_BUS_DV #(
+      .AXI_ADDR_WIDTH ( AW ),
+      .AXI_DATA_WIDTH ( DW ),
+      .AXI_ID_WIDTH   ( IW ),
+      .AXI_USER_WIDTH ( UW )
+    ) bus_axi;
+
+    function new(
+                  int unsigned tracer_id,
+                  virtual      AXI_BUS_DV #(
+                               .AXI_ADDR_WIDTH ( AW ),
+                               .AXI_DATA_WIDTH ( DW ),
+                               .AXI_ID_WIDTH ( IW ),
+                               .AXI_USER_WIDTH ( UW )
+                               ) bus_axi
+    );
+       this.bus_axi = bus_axi;
+       this.tracer_id = tracer_id;
+    endfunction
+
+    // when start the testing
+    task cycle_start;
+      #TT;
+    endtask
+
+    // when is cycle finished
+    task cycle_end;
+      @(posedge this.bus_axi.clk_i);
+    endtask
+
+    task trace_writes_chan();
+       int fd;
+       string        filename;
+       time          when_issued;
+
+       ax_trace_t local_trace;
+       ax_id_t    id_buffer;
+       logic      oldest;
+       logic      inflight;
+
+       oldest = 0;
+       inflight = 0;
+
+       if(this.bus_axi.aw_valid) begin
+          if(aw_waiting_id.size()==0) begin
+             // There are no inflight transactions, enqueue the first
+             oldest=1;
+             aw_waiting_id.push_front(this.bus_axi.aw_id);
+             id_buffer = this.bus_axi.aw_id;
+          end else begin
+             id_buffer = aw_waiting_id.pop_front();
+             if(id_buffer==this.bus_axi.aw_id) begin
+                // This process is not the oldest
+                oldest = 0;
+                aw_waiting_id.push_front(id_buffer);
+             end else begin
+                oldest = 1;
+                aw_waiting_id.push_front(id_buffer);
+                aw_waiting_id.push_front(this.bus_axi.aw_id);
+                id_buffer = this.bus_axi.aw_id;
+             end
+          end // else: !if(aw_waiting_id.size()==0)
+
+          if(oldest) begin
+
+             when_issued=$time;
+             local_trace.num_cycle_acc = 0;
+             local_trace.num_cycle_com = 0;
+             local_trace.ax_id = this.bus_axi.aw_id;
+             local_trace.ax_len = this.bus_axi.aw_len;
+
+             while(~this.bus_axi.aw_ready) begin
+                local_trace.num_cycle_acc++;
+                cycle_end();
+             end
+
+
+             while( ~(this.bus_axi.b_valid && this.bus_axi.b_ready && (this.bus_axi.b_id == local_trace.ax_id) ) ) begin
+                if(this.bus_axi.w_valid) local_trace.num_cycle_com++;
+                cycle_end();
+             end
+
+             if(local_trace.num_cycle_acc==0 && local_trace.num_cycle_com==0)
+               local_trace.chan_util = real'( local_trace.ax_len + 1 );
+             else
+               local_trace.chan_util = real'( local_trace.ax_len + 1 ) / ( real'(local_trace.num_cycle_acc) + real'(local_trace.num_cycle_com) + 2 );
+
+             ax_transactions.push_back(local_trace);
+             for(int j = aw_waiting_id.size(); j>0 ; j--) begin
+                if(aw_waiting_id[j-1]==id_buffer) begin
+                   aw_waiting_id.delete(j-1);
+                   break;
+                end
+             end
+             $sformat(filename,"traces_rw.dat");
+             fd = $fopen(filename, "a");
+             $fwrite(fd,"%t, %t, %d,W, %b, %d, %d, %d, %f\n", when_issued, $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
+             $fclose(fd);
+
+          end
+
+       end
+
+    endtask
+
+    task trace_reads_chan();
+       int fd;
+       string        filename;
+       time          when_issued;
+
+       ax_trace_t local_trace;
+       ax_id_t    id_buffer;
+       logic      oldest;
+
+       local_trace.num_cycle_acc = 0;
+       local_trace.num_cycle_com = 0;
+       local_trace.ax_id = this.bus_axi.ar_id;
+       local_trace.ax_len = this.bus_axi.ar_len;
+
+       if(this.bus_axi.ar_valid) begin
+          if(ar_waiting_id.size()==0) begin
+             // There are no inflight transactions, enqueue the first
+             oldest=1;
+             ar_waiting_id.push_front(this.bus_axi.ar_id);
+             id_buffer = this.bus_axi.ar_id;
+          end else begin
+             id_buffer = ar_waiting_id.pop_front();
+             if(id_buffer==this.bus_axi.ar_id) begin
+                // This process is not the oldest
+                oldest = 0;
+                ar_waiting_id.push_front(id_buffer);
+             end else begin
+                oldest = 1;
+                ar_waiting_id.push_front(id_buffer);
+                ar_waiting_id.push_front(this.bus_axi.ar_id);
+                id_buffer = this.bus_axi.ar_id;
+             end
+          end
+
+          if(oldest) begin
+             when_issued=$time;
+             while(~this.bus_axi.ar_ready) begin
+                local_trace.num_cycle_acc++;
+                cycle_end();
+             end
+
+             while( ~(this.bus_axi.r_valid && this.bus_axi.r_ready && (this.bus_axi.r_id == local_trace.ax_id) && this.bus_axi.r_last ) ) begin
+                local_trace.num_cycle_com++;
+                cycle_end();
+             end
+
+             if(local_trace.num_cycle_acc==0 && local_trace.num_cycle_com==0)
+               local_trace.chan_util = real'( local_trace.ax_len + 1 );
+             else
+               local_trace.chan_util = real'( local_trace.ax_len + 1 ) / ( real'(local_trace.num_cycle_acc) + real'(local_trace.num_cycle_com)  + 2 );
+
+             ax_transactions.push_back(local_trace);
+             for(int j = ar_waiting_id.size(); j>0 ; j--) begin
+                if(ar_waiting_id[j-1]==id_buffer) begin
+                   ar_waiting_id.delete(j-1);
+                   break;
+                end
+             end
+             $sformat(filename,"traces_rw.dat");
+             fd = $fopen(filename, "a");
+             $fwrite(fd,"%t, %t, %d,R, %b, %d, %d, %d, %f\n", when_issued, $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
+             $fclose(fd);
+
+          end
+
+       end
+
+    endtask
+
+     task trace();
+
+        int fd;
+        string        filename;
+
+        begin
+             $sformat(filename,"traces_rw.dat");
+             fd = $fopen(filename, "w");
+             $fwrite(fd,"t_val,t_end,ID,W/R,AX_ID,ACC,LEN,CHAN,UTIL\n",);
+             $fclose(fd);
+        end
+
+        do begin
+           cycle_start();
+           Trace: fork
+              proc_aw: begin
+                 trace_writes_chan();
+              end
+              proc_ar: begin
+                 trace_reads_chan();
+              end
+           join_none
+           cycle_end();
+        end while(1'b1); // do begin
+
+     endtask
+
+  endclass
+
+  /// AXI Slv port tracer.
+  class axi_latency_tracer #(
+    /// AXI4+ATOP ID width
+    parameter int unsigned IW = 0,
+    /// Num Slaves
+    parameter int unsigned NumSlaves = 0,
+    /// AXI4+ATOP address width
+    parameter int unsigned AW = 0,
+    /// AXI4+ATOP data width
+    parameter int unsigned DW = 0,
+    /// AXI4+ATOP user width
+    parameter int unsigned UW = 0,
+    /// Rules
+    parameter int unsigned NoAddrRules,
+    parameter              type rule_t,
+    parameter              rule_t [NoAddrRules-1:0] AddrMap,
+    /// Stimuli test time
+    parameter time         TT = 0ns
+  );
+
+    localparam int M_SEL_WIDTH = (NumSlaves == 32'd1) ? 32'd1 : unsigned'($clog2(NumSlaves));
+
+    typedef logic [IW-1:0] ax_id_t;
+    typedef axi_pkg::len_t ax_len_t;
+    typedef int unsigned   idx_slv_t; // from rule_t
+
+    typedef struct {
+       ax_id_t ax_id;
+       ax_len_t ax_len;
+       int unsigned num_cycle_acc;
+       int unsigned num_cycle_lat;
+       int unsigned b_cycle_acc;
+       int unsigned b_cycle_lat;
+    } ax_trace_t;
+
+    typedef struct {
+       ax_id_t ax_id;
+       ax_len_t ax_len;
+       int unsigned num_cycle_acc;
+       int unsigned num_cycle_lat;
+       logic [AW-1:0] r_data;
+    } r_trace_t;
+
+    ax_trace_t ax_transactions[$];
+    ax_id_t    aw_waiting_id[$];
+    ax_id_t    ar_waiting_id[$];
+    int        w_slv_id[$];
+    int        first_w_valid[$];
+
+    int unsigned   tracer_id;
+    virtual AXI_BUS_DV #(
+      .AXI_ADDR_WIDTH ( AW ),
+      .AXI_DATA_WIDTH ( DW ),
+      .AXI_ID_WIDTH   ( IW ),
+      .AXI_USER_WIDTH ( UW )
+    ) master_axi;
+    virtual AXI_BUS_DV #(
+      .AXI_ADDR_WIDTH ( AW             ),
+      .AXI_DATA_WIDTH ( DW             ),
+      .AXI_ID_WIDTH   ( IW+M_SEL_WIDTH ),
+      .AXI_USER_WIDTH ( UW             )
+    ) slaves_axi[NumSlaves-1:0];
+
+    function new(
+                  int unsigned tracer_id,
+                  virtual      AXI_BUS_DV #(
+                               .AXI_ADDR_WIDTH ( AW ),
+                               .AXI_DATA_WIDTH ( DW ),
+                               .AXI_ID_WIDTH   ( IW ),
+                               .AXI_USER_WIDTH ( UW )
+                               ) master_axi_vif,
+                  virtual      AXI_BUS_DV #(
+                               .AXI_ADDR_WIDTH ( AW             ),
+                               .AXI_DATA_WIDTH ( DW             ),
+                               .AXI_ID_WIDTH   ( IW+M_SEL_WIDTH ),
+                               .AXI_USER_WIDTH ( UW             )
+                               ) slaves_axi_vif[NumSlaves-1:0]
+    );
+       this.tracer_id  = tracer_id;
+       this.master_axi = master_axi_vif;
+       this.slaves_axi = slaves_axi_vif;
+    endfunction
+
+    // when start the testing
+    task cycle_start;
+      #TT;
+    endtask
+
+    // when is cycle finished
+    task cycle_end;
+      @(posedge this.master_axi.clk_i);
+    endtask
+
+    task trace_aw_b();
+       int fd;
+       int decerr;
+
+       string        filename;
+       time          when_issued;
+       idx_slv_t     to_slave_idx;
+
+       ax_trace_t local_trace;
+       ax_id_t    id_buffer_oldest;
+       ax_id_t    id_buffer_w;
+       logic      oldest;
+       int        inflight;
+       int        w_acc;
+       int        w_lat;
+
+
+       oldest = 0;
+       inflight = 0;
+
+       if(this.master_axi.aw_valid) begin
+          if(aw_waiting_id.size()==0) begin
+             // There are no inflight transactions, enqueue the first
+             oldest=1;
+             aw_waiting_id.push_front(this.master_axi.aw_id);
+          end else begin
+             id_buffer_oldest = aw_waiting_id[0];
+             if(id_buffer_oldest==this.master_axi.aw_id) begin
+                // This process is not the oldest
+                oldest = 0;
+             end else begin
+                oldest = 1;
+                aw_waiting_id.push_front(this.master_axi.aw_id);
+             end
+          end
+
+          if(oldest) begin
+
+             when_issued=$time;
+             local_trace.num_cycle_acc = 0;
+             local_trace.num_cycle_lat = 0;
+             local_trace.ax_id = this.master_axi.aw_id;
+             local_trace.ax_len = this.master_axi.aw_len;
+
+             decerr = -1;
+             for (int unsigned j = 0; j < NoAddrRules; j++) begin
+                if ((master_axi.aw_addr >= AddrMap[j].start_addr) && (master_axi.aw_addr < AddrMap[j].end_addr)) begin
+                   to_slave_idx = idx_slv_t'(AddrMap[j].idx);
+                   decerr = 0;
+                end
+             end
+
+             if(decerr==0) begin
+
+                w_slv_id.push_front(to_slave_idx);
+                while(~this.master_axi.aw_ready) begin
+                   local_trace.num_cycle_acc++;
+                   cycle_end();
+                   cycle_start();
+                end
+
+                while(~(this.slaves_axi[to_slave_idx].aw_valid &&
+                        (this.slaves_axi[to_slave_idx].aw_id[IW-1:0]==local_trace.ax_id) &&
+                        (this.slaves_axi[to_slave_idx].aw_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) ) begin
+                   local_trace.num_cycle_lat++;
+                   cycle_end();
+                   cycle_start();
+                end
+
+                $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
+                fd = $fopen(filename, "a");
+                $fwrite(fd,"AW, %t,%t , %d, %d\n", when_issued, $time, local_trace.num_cycle_acc, local_trace.num_cycle_lat);
+                $fclose(fd);
+
+
+                // It ended
+                local_trace.b_cycle_acc = 0;
+                local_trace.b_cycle_lat = 0;
+                while(~(this.slaves_axi[to_slave_idx].b_valid &&
+                        this.slaves_axi[to_slave_idx].b_ready &&
+                        (this.slaves_axi[to_slave_idx].b_id[IW-1:0]==local_trace.ax_id) &&
+                        (this.slaves_axi[to_slave_idx].b_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) ) begin
+                  if(this.slaves_axi[to_slave_idx].b_valid &&
+                     ~this.slaves_axi[to_slave_idx].b_ready &&
+                     (this.slaves_axi[to_slave_idx].b_id[IW-1:0]==local_trace.ax_id) &&
+                     (this.slaves_axi[to_slave_idx].b_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) begin
+                     local_trace.b_cycle_acc++;
+                  end
+                  cycle_end();
+                  cycle_start();
+                end
+                w_slv_id.pop_back();
+                while (~this.master_axi.b_valid) begin
+                   local_trace.b_cycle_lat++;
+                   cycle_end();
+                   cycle_start();
+                end
+                aw_waiting_id.pop_back();
+                $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
+                fd = $fopen(filename, "a");
+                $fwrite(fd,"B, %t,%t , %d, %d\n", when_issued, $time, local_trace.b_cycle_acc, local_trace.b_cycle_lat);
+                $fclose(fd);
+             end
+          end
+       end
+    endtask
+
+    task trace_w();
+       int w_acc;
+       int w_lat;
+       int fd;
+       string        filename;
+
+       int w_slv_idx_buff;
+
+       time when_issued;
+       w_acc = 0;
+       w_lat = 0;
+
+       if(this.master_axi.w_valid) begin
+          if(first_w_valid.size()==0) begin
+            first_w_valid.push_front(1);
+            when_issued = $time;
+            while(~this.master_axi.w_ready) begin
+               w_acc++;
+               cycle_end();
+               cycle_start();
+            end
+            first_w_valid.pop_back();
+            w_slv_idx_buff = w_slv_id[$];
+            fork
+               begin : check_prop
+                  while(~this.slaves_axi[w_slv_idx_buff].w_valid) begin
+                     w_lat++;
+                     cycle_end();
+                     cycle_start();
+                  end
+                  $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
+                  fd = $fopen(filename, "a");
+                  $fwrite(fd,"W, %t,%t , %d, %d\n", when_issued, $time, w_acc, w_lat);
+                  $fclose(fd);
+               end
+            join_none
+          end
+       end
+    endtask
+
+    task trace_reads();
+       int fd;
+       string        filename;
+       time          when_issued;
+       time          when_issued_r;
+       idx_slv_t     to_slave_idx;
+
+       int           decerr;
+       int           r_acc, r_lat;
+
+       ax_trace_t local_trace;
+       ax_id_t    id_buffer;
+       logic      oldest;
+
+       local_trace.num_cycle_acc = 0;
+       local_trace.num_cycle_lat = 0;
+       local_trace.ax_id = this.master_axi.ar_id;
+       local_trace.ax_len = this.master_axi.ar_len;
+
+       if(this.master_axi.ar_valid) begin
+          if(ar_waiting_id.size()==0) begin
+             // There are no inflight transactions, enqueue the first
+             oldest=1;
+             ar_waiting_id.push_front(this.master_axi.ar_id);
+          end else begin
+             id_buffer = ar_waiting_id.pop_front();
+             if(id_buffer==this.master_axi.ar_id) begin
+                // This process is not the oldest
+                oldest = 0;
+                ar_waiting_id.push_front(id_buffer);
+             end else begin
+                oldest = 1;
+                ar_waiting_id.push_front(id_buffer);
+                ar_waiting_id.push_front(this.master_axi.ar_id);
+             end
+          end
+
+          if(oldest) begin
+             when_issued=$time;
+
+             decerr = -1;
+
+             for (int unsigned j = 0; j < NoAddrRules; j++) begin
+                if ((master_axi.ar_addr >= AddrMap[j].start_addr) && (master_axi.ar_addr < AddrMap[j].end_addr)) begin
+                   to_slave_idx = idx_slv_t'(AddrMap[j].idx);
+                   decerr = 0;
+                end
+             end
+
+             if(decerr==0) begin
+
+                while(~this.master_axi.ar_ready) begin
+                   local_trace.num_cycle_acc++;
+                   cycle_end();
+                   cycle_start();
+                end
+
+                while(~(this.slaves_axi[to_slave_idx].ar_valid &&
+                        (this.slaves_axi[to_slave_idx].ar_id[IW-1:0]==local_trace.ax_id) &&
+                        (this.slaves_axi[to_slave_idx].ar_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) ) begin
+                   local_trace.num_cycle_lat++;
+                   cycle_end();
+                   cycle_start();
+                end
+
+               $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
+               fd = $fopen(filename, "a");
+               $fwrite(fd,"AR, %t , %t, %d, %d\n", when_issued, $time, local_trace.num_cycle_acc, local_trace.num_cycle_lat);
+               $fclose(fd);
+
+                // We might expect it anytime
+                r_acc = 0;
+                r_lat = 0;
+                $display("%d: %b %b %b %b", tracer_id, this.slaves_axi[to_slave_idx].r_valid, this.slaves_axi[to_slave_idx].r_last , this.slaves_axi[to_slave_idx].r_id[IW-1:0], this.slaves_axi[to_slave_idx].r_id[M_SEL_WIDTH+IW-1:IW]);
+                while (~(this.slaves_axi[to_slave_idx].r_valid &&
+                         this.slaves_axi[to_slave_idx].r_last &&
+                         (this.slaves_axi[to_slave_idx].r_id[IW-1:0]==local_trace.ax_id) &&
+                         (this.slaves_axi[to_slave_idx].r_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) ) begin
+                   if( this.slaves_axi[to_slave_idx].r_valid &&
+                       (this.slaves_axi[to_slave_idx].r_id[IW-1:0]==local_trace.ax_id) &&
+                       (this.slaves_axi[to_slave_idx].r_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) begin
+                      when_issued_r = $time;
+                      while (~this.slaves_axi[to_slave_idx].r_ready) begin
+                         r_acc++;
+                         cycle_end();
+                         cycle_start();
+                      end
+                      fork
+                         begin : check_r_prop
+                            while (~(this.master_axi.r_valid && (this.master_axi.r_id==local_trace.ax_id))) begin
+                               r_lat++;
+                               cycle_end();
+                               cycle_start();
+                            end
+                            $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
+                            fd = $fopen(filename, "a");
+                            $fwrite(fd,"R, %t , %t, %d, %d\n", when_issued_r, $time, r_acc, r_lat);
+                            $fclose(fd);
+                            r_acc=0;
+                            r_lat=0;
+                         end
+                      join_none
+                   end
+                   cycle_end();
+                   cycle_start();
+                end
+             end
+
+          end
+
+       end
+
+    endtask
+
+     task trace();
+
+        int fd;
+        string        filename;
+
+        begin
+             $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
+             fd = $fopen(filename, "w");
+             $fwrite(fd,"Channel,t_val,t_handshake,ACC,LAT\n");
+             $fclose(fd);
+        end
+
+        do begin
+           cycle_start();
+           Trace: fork
+              proc_aw: begin
+                 trace_aw_b();
+              end
+              proc_w: begin
+                 trace_w();
+              end
+              proc_ar: begin
+                 trace_reads();
+              end
+           join_none
+           cycle_end();
+        end while(1'b1); // do begin
+
+     endtask
+
+  endclass
   /// `axi_scoreboard` models a memory that only gets changed by the monitored AXI4+ATOP bus.
   ///
   /// This class is only capable of modeling `INCR` burst type, and cannot handle atomic operations.
