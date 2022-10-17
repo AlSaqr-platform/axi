@@ -1962,11 +1962,14 @@ package axi_test;
              end
              
              while( ~(this.bus_axi.b_valid && this.bus_axi.b_ready && (this.bus_axi.b_id == local_trace.ax_id) ) ) begin
-                local_trace.num_cycle_com++;
+                if(this.bus_axi.w_valid && ~this.bus_axi.w_ready) local_trace.num_cycle_com++;
                 cycle_end();
              end
              
-             local_trace.chan_util = real'( local_trace.ax_len + 1 ) / ( real'(local_trace.num_cycle_acc) + real'(local_trace.num_cycle_com) );
+             if(local_trace.num_cycle_acc==0 && local_trace.num_cycle_com==0)
+               local_trace.chan_util = real'( local_trace.ax_len + 1 );
+             else
+               local_trace.chan_util = real'( local_trace.ax_len + 1 ) / ( real'(local_trace.num_cycle_acc) + real'(local_trace.num_cycle_com) );
              
              $display("%0tns > ID %d AW tran id %b: accept latency %d, len %d, transfer cycles %d, utilization %f", $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
              
@@ -2012,11 +2015,14 @@ package axi_test;
              end
              
              while( ~(this.bus_axi.r_valid && this.bus_axi.r_ready && (this.bus_axi.r_id == local_trace.ax_id) && this.bus_axi.r_last ) ) begin
-                local_trace.num_cycle_com++;
+                if(this.bus_axi.r_valid && ~this.bus_axi.r_ready && (this.bus_axi.r_id == local_trace.ax_id) ) local_trace.num_cycle_com++;
                 cycle_end();
              end
-             
-             local_trace.chan_util = real'( local_trace.ax_len + 1 ) / ( real'(local_trace.num_cycle_acc) + real'(local_trace.num_cycle_com) );
+
+             if(local_trace.num_cycle_acc==0 && local_trace.num_cycle_com==0)
+               local_trace.chan_util = real'( local_trace.ax_len + 1 );
+             else
+               local_trace.chan_util = real'( local_trace.ax_len + 1 ) / ( real'(local_trace.num_cycle_acc) + real'(local_trace.num_cycle_com) );
              
              $display("%0tns > AR tran id %b: accept latency %d, len %d, transfer cycles %d, utilization %f", $time, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
              
