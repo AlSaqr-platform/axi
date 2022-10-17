@@ -1979,6 +1979,9 @@ package axi_test;
 
     task trace_reads_chan();
        ax_trace_t local_trace;
+       ax_id_t    id_buffer;
+       logic      oldest;
+
        local_trace.num_cycle_acc = 0;
        local_trace.num_cycle_com = 0;
        local_trace.ax_id = this.bus_axi.ar_id;
