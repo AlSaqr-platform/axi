@@ -40,11 +40,11 @@ module tb_axi_xbar_hulk #(
   /// Pipeline stages in the xbar itself (between demux and mux).
   parameter int unsigned TbPipeline          = 32'd1,
   /// Enable ATOP generation
-  parameter bit          TbEnAtop            = 1'b1,
+  parameter bit          TbEnAtop            = 1'b0,
   /// Enable exclusive accesses
   parameter bit TbEnExcl                     = 1'b0,   
   /// Restrict to only unique IDs         
-  parameter bit TbUniqueIds                  = 1'b0       
+  parameter bit TbUniqueIds                  = 1'b1
 
 );
 
@@ -55,7 +55,7 @@ module tb_axi_xbar_hulk #(
 
   localparam int ClAxiPeriod = 100;
   localparam int ClAxiNumWR  = 10;
-  localparam int ClAxiNumRd  = 10;
+  localparam int ClAxiNumRd  = 8;
   localparam int ClAxiBSize  = 8;
   localparam int ClMaxWrInfl = 8;
   localparam int ClMaxRdInfl = 8;
@@ -63,7 +63,7 @@ module tb_axi_xbar_hulk #(
    
   localparam int HoAxiPeriod = 100;
   localparam int HoAxiNumWR  = 10;
-  localparam int HoAxiNumRd  = 10;
+  localparam int HoAxiNumRd  = 8;
   localparam int HoAxiBSize  = 8;
   localparam int HoMaxWrInfl = 8;
   localparam int HoMaxRdInfl = 8;
@@ -180,6 +180,15 @@ module tb_axi_xbar_hulk #(
     .TA ( ApplTime           ),
     .TT ( TestTime           )
   ) axi_rand_slave_t;
+  typedef axi_test::axi_tracer #(
+    // AXI interface parameters
+    .AW ( TbAxiAddrWidth      ),
+    .DW ( TbAxiDataWidth      ),
+    .IW ( TbAxiIdWidthMasters ),
+    .UW ( TbAxiUserWidth      ),
+    // Stimuli application and test time
+    .TT ( TestTime           )
+  ) axi_tracer_t;
 
   // -------------
   // DUT signals
@@ -218,6 +227,12 @@ module tb_axi_xbar_hulk #(
     .AXI_ID_WIDTH   ( TbAxiIdWidthMasters ),
     .AXI_USER_WIDTH ( TbAxiUserWidth      )
   ) master_monitor_dv [TbNumMasters-1:0] (clk);
+  AXI_BUS_DV #(
+    .AXI_ADDR_WIDTH ( TbAxiAddrWidth      ),
+    .AXI_DATA_WIDTH ( TbAxiDataWidth      ),
+    .AXI_ID_WIDTH   ( TbAxiIdWidthMasters ),
+    .AXI_USER_WIDTH ( TbAxiUserWidth      )
+  ) master_tracer_dv [TbNumMasters-1:0] (clk);
   for (genvar i = 0; i < TbNumMasters; i++) begin : gen_conn_dv_masters
     `AXI_ASSIGN (master[i], master_dv[i])
     `AXI_ASSIGN_TO_REQ(masters_req[i], master[i])
@@ -265,7 +280,7 @@ module tb_axi_xbar_hulk #(
     function void add_traffic_shaping(input int unsigned len, input int unsigned freq);
     For each len you set a frequency. If you have one len, you enforce it on every transaction.
     When you have more len, the probability of it occuring is equal to freq/SUM(all the freq)*/
-    axi_cva6_master.add_traffic_shaping(HoAxiBSize,1);
+    axi_cva6_master.add_traffic_shaping(HoAxiBSize,10);
     axi_cva6_master.run(HoAxiNumRd, HoAxiNumWR);
     end_of_sim[0] <= 1'b1;
   end
@@ -281,11 +296,25 @@ module tb_axi_xbar_hulk #(
     function void add_traffic_shaping(input int unsigned len, input int unsigned freq);
     For each len you set a frequency. If you have one len, you enforce it on every transaction.
     When you have more len, the probability of it occuring is equal to freq/SUM(all the freq)*/
-    axi_cluster_master.add_traffic_shaping(ClAxiBSize,1);
+    axi_cluster_master.add_traffic_shaping(ClAxiBSize,10);
     axi_cluster_master.run(ClAxiNumRd, ClAxiNumWR);
     end_of_sim[1] <= 1'b1;
   end
 
+  axi_tracer_t axi_cva6_tracer = new( 0, master_tracer_dv[0] );
+  initial begin
+    @(posedge rst_n);
+    axi_cva6_tracer.trace();
+  end
+  axi_tracer_t axi_cluster_tracer = new( 1, master_tracer_dv[1] );
+  initial begin
+    @(posedge rst_n);
+    axi_cluster_tracer.trace();
+  end
+
+  `AXI_ASSIGN_MONITOR(master_tracer_dv[0],master_monitor_dv[0])
+  `AXI_ASSIGN_MONITOR(master_tracer_dv[1],master_monitor_dv[1])
+   
   axi_rand_slave_t axi_rand_slave [TbNumSlaves];
   for (genvar i = 0; i < TbNumSlaves; i++) begin : gen_rand_slave
     initial begin
