@@ -2024,7 +2024,7 @@ package axi_test;
              else
                local_trace.chan_util = real'( local_trace.ax_len + 1 ) / ( real'(local_trace.num_cycle_acc) + real'(local_trace.num_cycle_com) );
              
-             $display("%0tns > ID % d AR tran id %b: accept latency %d, len %d, transfer cycles %d, utilization %f", $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
+             $display("%0tns > ID %d AR tran id %b: accept latency %d, len %d, transfer cycles %d, utilization %f", $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
              
              ax_transactions.push_back(local_trace);
           end 
