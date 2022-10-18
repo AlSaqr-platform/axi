@@ -1944,8 +1944,10 @@ package axi_test;
        ax_trace_t local_trace;
        ax_id_t    id_buffer;
        logic      oldest;
+       logic      inflight;
 
        oldest = 0;
+       inflight = 0;
        
        if(this.bus_axi.aw_valid) begin
           if(aw_waiting_id.size()==0) begin
@@ -1976,20 +1978,29 @@ package axi_test;
                 local_trace.num_cycle_acc++;
                 cycle_end();
              end
-             
-             while( ~(this.bus_axi.b_valid && this.bus_axi.b_ready && (this.bus_axi.b_id == local_trace.ax_id) ) ) begin
-                if(this.bus_axi.w_valid && ~this.bus_axi.w_ready) local_trace.num_cycle_com++;
+
+             while(~inflight) begin
+                inflight = 0;
+                while( ~(this.bus_axi.b_valid && this.bus_axi.b_ready ) ) begin
+                   if(this.bus_axi.w_valid) local_trace.num_cycle_com++;
+                   cycle_end();                   
+                end
+                if ( this.bus_axi.b_valid && this.bus_axi.b_ready && (this.bus_axi.b_id != local_trace.ax_id) )
+                  local_trace.num_cycle_com = 0;
+                else
+                  inflight = 1;
                 cycle_end();
              end
-             
+               
              if(local_trace.num_cycle_acc==0 && local_trace.num_cycle_com==0)
                local_trace.chan_util = real'( local_trace.ax_len + 1 );
              else
                local_trace.chan_util = real'( local_trace.ax_len + 1 ) / ( real'(local_trace.num_cycle_acc) + real'(local_trace.num_cycle_com) );
              
              $display("%0tns > ID %d AW tran id %b: accept latency %d, len %d, transfer cycles %d, utilization %f", $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
-             
+
              ax_transactions.push_back(local_trace);
+             aw_waiting_id.pop_back();
              $sformat(filename,"traces_ID_%0d.dat",tracer_id);
              fd = $fopen(filename, "a");
              $fwrite(fd,"%t , %b, %d, %d, %d, %f\n", $time, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
@@ -2039,7 +2050,7 @@ package axi_test;
              end
              
              while( ~(this.bus_axi.r_valid && this.bus_axi.r_ready && (this.bus_axi.r_id == local_trace.ax_id) && this.bus_axi.r_last ) ) begin
-                if(this.bus_axi.r_valid && ~this.bus_axi.r_ready && (this.bus_axi.r_id == local_trace.ax_id) ) local_trace.num_cycle_com++;
+                if(this.bus_axi.r_valid && (this.bus_axi.r_id == local_trace.ax_id) ) local_trace.num_cycle_com++;
                 cycle_end();
              end
 
@@ -2063,6 +2074,16 @@ package axi_test;
     endtask
 
      task trace();
+
+        int fd;
+        string        filename;
+
+        begin
+             $sformat(filename,"traces_ID_%0d.dat",tracer_id);
+             fd = $fopen(filename, "w");
+             $fwrite(fd,"Time, AX ID, ACC, LEN, CHAN, UTIL\n",);
+             $fclose(fd);
+        end
 
         do begin
            cycle_start();
