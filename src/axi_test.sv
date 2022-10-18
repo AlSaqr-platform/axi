@@ -760,6 +760,7 @@ package axi_test;
 
     struct packed {
       int unsigned len  ;
+      int unsigned size ;
       int unsigned cprob;
     } traffic_shape[$];
     int unsigned max_cprob;
@@ -806,11 +807,11 @@ package axi_test;
       mem_map.push_back({addr_begin, addr_end, mem_type});
     endfunction
 
-    function void add_traffic_shaping(input int unsigned len, input int unsigned freq);
+    function void add_traffic_shaping(input int unsigned len, input int unsigned size, input int unsigned freq);
       if (traffic_shape.size() == 0)
-        traffic_shape.push_back({len, freq});
+        traffic_shape.push_back({len, size, freq});
       else
-        traffic_shape.push_back({len, traffic_shape[$].cprob + freq});
+        traffic_shape.push_back({len, size, traffic_shape[$].cprob + freq});
 
       max_cprob = traffic_shape[$].cprob;
     endfunction : add_traffic_shaping
@@ -828,6 +829,7 @@ package axi_test;
       automatic int unsigned mem_region_idx;
       automatic mem_region_t mem_region;
       automatic int cprob;
+      automatic bit fixed_size;
 
       // No memory regions defined
       if (mem_map.size() == 0) begin
@@ -854,27 +856,38 @@ package axi_test;
       ax_beat.ax_cache = is_read ? axi_pkg::get_arcache(mem_region.mem_type) : axi_pkg::get_awcache(mem_region.mem_type);
       // Randomize beat size.
       if (TRAFFIC_SHAPING) begin
+        fixed_size = 0; 
         rand_success = std::randomize(cprob) with {
           cprob >= 0; cprob < max_cprob;
         }; assert(rand_success);
-
+        
         for (int i = 0; i < traffic_shape.size(); i++)
           if (traffic_shape[i].cprob > cprob) begin
             len = traffic_shape[i].len;
             if (ax_beat.ax_burst == BURST_WRAP) begin
               assert (len inside {len_t'(1), len_t'(3), len_t'(7), len_t'(15)});
             end
+            if (traffic_shape[i].size!=-1) begin
+               fixed_size = 1;
+               size = traffic_shape[i].size;
+               assert( (2**size <= AXI_STRB_WIDTH) && (2**size <= len) ) else $fatal("Illegal fixed size and len");
+            end
             break;
           end
 
         // Randomize address.  Make sure that the burst does not cross a 4KiB boundary.
         forever begin
-          rand_success = std::randomize(size) with {
-            2**size <= AXI_STRB_WIDTH;
-            2**size <= len;
-          }; assert(rand_success);
+          if(~fixed_size) begin
+             rand_success = std::randomize(size) with {
+               2**size <= AXI_STRB_WIDTH;
+               2**size <= len;
+             }; assert(rand_success);
+             ax_beat.ax_len = ((len + (1 << size) - 1) >> size) - 1;       
+          end else begin
+             ax_beat.ax_len = len;
+          end
+
           ax_beat.ax_size = size;
-          ax_beat.ax_len = ((len + (1 << size) - 1) >> size) - 1;
 
           rand_success = std::randomize(addr) with {
             addr >= mem_region.addr_begin;
@@ -891,7 +904,8 @@ package axi_test;
               break;
             end
           end
-        end
+       end
+        
       end else begin
         // Randomize address.  Make sure that the burst does not cross a 4KiB boundary.
         forever begin
@@ -1893,7 +1907,6 @@ package axi_test;
     ax_id_t    ar_waiting_id[$]; 
     
     int unsigned   tracer_id;
-     
     virtual AXI_BUS_DV #(
       .AXI_ADDR_WIDTH ( AW ),
       .AXI_DATA_WIDTH ( DW ),
@@ -1925,6 +1938,9 @@ package axi_test;
     endtask
 
     task trace_writes_chan();
+       int fd;       
+       string        filename;
+ 
        ax_trace_t local_trace;
        ax_id_t    id_buffer;
        logic      oldest;
@@ -1974,6 +1990,11 @@ package axi_test;
              $display("%0tns > ID %d AW tran id %b: accept latency %d, len %d, transfer cycles %d, utilization %f", $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
              
              ax_transactions.push_back(local_trace);
+             $sformat(filename,"traces_ID_%0d.dat",tracer_id);
+             fd = $fopen(filename, "a");
+             $fwrite(fd,"%t , %b, %d, %d, %d, %f\n", $time, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
+             $fclose(fd);
+             
           end 
           
        end 
@@ -1981,6 +2002,9 @@ package axi_test;
     endtask
 
     task trace_reads_chan();
+       int fd;
+       string        filename;
+
        ax_trace_t local_trace;
        ax_id_t    id_buffer;
        logic      oldest;
@@ -2027,6 +2051,11 @@ package axi_test;
              $display("%0tns > ID %d AR tran id %b: accept latency %d, len %d, transfer cycles %d, utilization %f", $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
              
              ax_transactions.push_back(local_trace);
+             $sformat(filename,"traces_ID_%0d.dat",tracer_id);
+             fd = $fopen(filename, "a");
+             $fwrite(fd,"%t , %b, %d, %d, %d, %f\n", $time, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
+             $fclose(fd);
+
           end 
 
        end 
