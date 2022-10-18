@@ -53,18 +53,18 @@ module tb_axi_xbar_hulk #(
   localparam time ApplTime =  2ns;
   localparam time TestTime =  8ns;
 
-  localparam int ClAxiPeriod = 100;
-  localparam int ClAxiNumWR  = 10;
-  localparam int ClAxiNumRd  = 8;
+  localparam int ClAxiPeriod = 1000;
+  localparam int ClAxiNumWR  = 100;
+  localparam int ClAxiNumRd  = 100;
   localparam int ClAxiBSize  = 8;
   localparam int ClMaxWrInfl = 8;
   localparam int ClMaxRdInfl = 8;
   localparam int MaxClAXWaitTime = ClAxiPeriod / (ClAxiNumWR + ClAxiNumRd);
    
-  localparam int HoAxiPeriod = 100;
-  localparam int HoAxiNumWR  = 10;
-  localparam int HoAxiNumRd  = 8;
-  localparam int HoAxiBSize  = 8;
+  localparam int HoAxiPeriod = 1000;
+  localparam int HoAxiNumWR  = 100;
+  localparam int HoAxiNumRd  = 100;
+  localparam int HoAxiBSize  = 31;
   localparam int HoMaxWrInfl = 8;
   localparam int HoMaxRdInfl = 8;
   localparam int MaxHoAXWaitTime = HoAxiPeriod / (HoAxiNumWR + HoAxiNumRd);
@@ -130,55 +130,63 @@ module tb_axi_xbar_hulk #(
 
   typedef axi_test::axi_rand_master #(
     // AXI interface parameters
-    .AW                 ( TbAxiAddrWidth      ),
-    .DW                 ( TbAxiDataWidth      ),
-    .IW                 ( TbAxiIdWidthMasters ),
-    .UW                 ( TbAxiUserWidth      ),
+    .AW                   ( TbAxiAddrWidth      ),
+    .DW                   ( TbAxiDataWidth      ),
+    .IW                   ( TbAxiIdWidthMasters ),
+    .UW                   ( TbAxiUserWidth      ),
     // Stimuli application and test time
-    .TA                 ( ApplTime            ),
-    .TT                 ( TestTime            ),
+    .TA                   ( ApplTime            ),
+    .TT                   ( TestTime            ),
     // Traffic shaping to benchmark
-    .TRAFFIC_SHAPING    ( 1                   ),
-    .AX_MAX_WAIT_CYCLES ( MaxHoAXWaitTime     ),
+    .TRAFFIC_SHAPING      ( 1                   ),
+    .AX_MAX_WAIT_CYCLES   ( MaxHoAXWaitTime     ),
+    .W_MAX_WAIT_CYCLES    ( 1                   ),
+    .RESP_MAX_WAIT_CYCLES ( 1                   ),
     // Maximum number of read and write 
     // transactions in flight
-    .MAX_READ_TXNS      ( HoMaxRdInfl         ),
-    .MAX_WRITE_TXNS     ( HoMaxWrInfl         ),
-    .AXI_BURST_FIXED    ( 0                   ),
-    .AXI_EXCLS          ( TbEnExcl            ),
-    .AXI_ATOPS          ( TbEnAtop            ),
-    .UNIQUE_IDS         ( TbUniqueIds         )
+    .MAX_READ_TXNS        ( HoMaxRdInfl         ),
+    .MAX_WRITE_TXNS       ( HoMaxWrInfl         ),
+    .AXI_BURST_FIXED      ( 0                   ),
+    .AXI_EXCLS            ( TbEnExcl            ),
+    .AXI_ATOPS            ( TbEnAtop            ),
+    .UNIQUE_IDS           ( TbUniqueIds         )
   ) cva6_master_t;
   typedef axi_test::axi_rand_master #(
     // AXI interface parameters
-    .AW                 ( TbAxiAddrWidth      ),
-    .DW                 ( TbAxiDataWidth      ),
-    .IW                 ( TbAxiIdWidthMasters ),
-    .UW                 ( TbAxiUserWidth      ),
+    .AW                   ( TbAxiAddrWidth      ),
+    .DW                   ( TbAxiDataWidth      ),
+    .IW                   ( TbAxiIdWidthMasters ),
+    .UW                   ( TbAxiUserWidth      ),
     // Stimuli application and test time
-    .TA                 ( ApplTime            ),
-    .TT                 ( TestTime            ),
+    .TA                   ( ApplTime            ),
+    .TT                   ( TestTime            ),
     // Traffic shaping to benchmark
-    .TRAFFIC_SHAPING    ( 1                   ),
-    .AX_MAX_WAIT_CYCLES ( MaxClAXWaitTime     ),
+    .TRAFFIC_SHAPING      ( 1                   ),
+    .AX_MAX_WAIT_CYCLES   ( MaxClAXWaitTime     ),
+    .W_MAX_WAIT_CYCLES    ( 1                   ),
+    .RESP_MAX_WAIT_CYCLES ( 1                   ),
     // Maximum number of read and write 
     // transactions in flight
-    .MAX_READ_TXNS      ( ClMaxRdInfl         ),
-    .MAX_WRITE_TXNS     ( ClMaxWrInfl         ),
-    .AXI_BURST_FIXED    ( 0                   ),
-    .AXI_EXCLS          ( TbEnExcl            ),
-    .AXI_ATOPS          ( TbEnAtop            ),
-    .UNIQUE_IDS         ( TbUniqueIds         )
+    .MAX_READ_TXNS        ( ClMaxRdInfl         ),
+    .MAX_WRITE_TXNS       ( ClMaxWrInfl         ),
+    .AXI_BURST_FIXED      ( 0                   ),
+    .AXI_EXCLS            ( TbEnExcl            ),
+    .AXI_ATOPS            ( TbEnAtop            ),
+    .UNIQUE_IDS           ( TbUniqueIds         )
   ) cluster_master_t;
   typedef axi_test::axi_rand_slave #(
     // AXI interface parameters
-    .AW ( TbAxiAddrWidth     ),
-    .DW ( TbAxiDataWidth     ),
-    .IW ( TbAxiIdWidthSlaves ),
-    .UW ( TbAxiUserWidth     ),
+    .AW                   ( TbAxiAddrWidth     ),
+    .DW                   ( TbAxiDataWidth     ),
+    .IW                   ( TbAxiIdWidthSlaves ),
+    .UW                   ( TbAxiUserWidth     ),
+    // To profile the xbar, the slave always has to be ready
+    .AX_MAX_WAIT_CYCLES   ( 1                  ),
+    .R_MAX_WAIT_CYCLES    ( 1                  ),
+    .RESP_MAX_WAIT_CYCLES ( 1                  ),
     // Stimuli application and test time
-    .TA ( ApplTime           ),
-    .TT ( TestTime           )
+    .TA                   ( ApplTime           ),
+    .TT                   ( TestTime           )
   ) axi_rand_slave_t;
   typedef axi_test::axi_tracer #(
     // AXI interface parameters
