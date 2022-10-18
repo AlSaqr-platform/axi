@@ -280,7 +280,7 @@ module tb_axi_xbar_hulk #(
     function void add_traffic_shaping(input int unsigned len, input int unsigned freq);
     For each len you set a frequency. If you have one len, you enforce it on every transaction.
     When you have more len, the probability of it occuring is equal to freq/SUM(all the freq)*/
-    axi_cva6_master.add_traffic_shaping(HoAxiBSize,10);
+    axi_cva6_master.add_traffic_shaping(HoAxiBSize,3,10);
     axi_cva6_master.run(HoAxiNumRd, HoAxiNumWR);
     end_of_sim[0] <= 1'b1;
   end
@@ -296,7 +296,7 @@ module tb_axi_xbar_hulk #(
     function void add_traffic_shaping(input int unsigned len, input int unsigned freq);
     For each len you set a frequency. If you have one len, you enforce it on every transaction.
     When you have more len, the probability of it occuring is equal to freq/SUM(all the freq)*/
-    axi_cluster_master.add_traffic_shaping(ClAxiBSize,10);
+    axi_cluster_master.add_traffic_shaping(ClAxiBSize,3,10);
     axi_cluster_master.run(ClAxiNumRd, ClAxiNumWR);
     end_of_sim[1] <= 1'b1;
   end
