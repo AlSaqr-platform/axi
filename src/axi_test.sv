@@ -2003,7 +2003,7 @@ package axi_test;
              aw_waiting_id.pop_back();
              $sformat(filename,"traces_ID_%0d.dat",tracer_id);
              fd = $fopen(filename, "a");
-             $fwrite(fd,"%t , %b, %d, %d, %d, %f\n", $time, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
+             $fwrite(fd,"%t , 1, %b, %d, %d, %d, %f\n", $time, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
              $fclose(fd);
              
           end 
@@ -2050,7 +2050,7 @@ package axi_test;
              end
              
              while( ~(this.bus_axi.r_valid && this.bus_axi.r_ready && (this.bus_axi.r_id == local_trace.ax_id) && this.bus_axi.r_last ) ) begin
-                if(this.bus_axi.r_valid && (this.bus_axi.r_id == local_trace.ax_id) ) local_trace.num_cycle_com++;
+                local_trace.num_cycle_com++;
                 cycle_end();
              end
 
@@ -2064,7 +2064,7 @@ package axi_test;
              ax_transactions.push_back(local_trace);
              $sformat(filename,"traces_ID_%0d.dat",tracer_id);
              fd = $fopen(filename, "a");
-             $fwrite(fd,"%t , %b, %d, %d, %d, %f\n", $time, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
+             $fwrite(fd,"%t , 0, %b, %d, %d, %d, %f\n", $time, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
              $fclose(fd);
 
           end 
@@ -2081,7 +2081,7 @@ package axi_test;
         begin
              $sformat(filename,"traces_ID_%0d.dat",tracer_id);
              fd = $fopen(filename, "w");
-             $fwrite(fd,"Time, AX ID, ACC, LEN, CHAN, UTIL\n",);
+             $fwrite(fd,"Time, W/R, AX ID, ACC, LEN, CHAN, UTIL\n",);
              $fclose(fd);
         end
 
