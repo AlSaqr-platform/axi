@@ -53,18 +53,18 @@ module tb_axi_xbar_hulk #(
   localparam time ApplTime =  2ns;
   localparam time TestTime =  8ns;
 
-  localparam int ClAxiPeriod = 1000;
-  localparam int ClAxiNumWR  = 100;
-  localparam int ClAxiNumRd  = 100;
-  localparam int ClAxiBSize  = 8;
+  localparam int ClAxiPeriod = 100;
+  localparam int ClAxiNumWR  = 8;
+  localparam int ClAxiNumRd  = 8;
+  localparam int ClAxiBSize  = 8; 
   localparam int ClMaxWrInfl = 8;
   localparam int ClMaxRdInfl = 8;
   localparam int MaxClAXWaitTime = ClAxiPeriod / (ClAxiNumWR + ClAxiNumRd);
    
-  localparam int HoAxiPeriod = 1000;
-  localparam int HoAxiNumWR  = 100;
-  localparam int HoAxiNumRd  = 100;
-  localparam int HoAxiBSize  = 31;
+  localparam int HoAxiPeriod = 100;
+  localparam int HoAxiNumWR  = 8;
+  localparam int HoAxiNumRd  = 8;
+  localparam int HoAxiBSize  = 13;
   localparam int HoMaxWrInfl = 8;
   localparam int HoMaxRdInfl = 8;
   localparam int MaxHoAXWaitTime = HoAxiPeriod / (HoAxiNumWR + HoAxiNumRd);
@@ -181,7 +181,8 @@ module tb_axi_xbar_hulk #(
     .IW                   ( TbAxiIdWidthSlaves ),
     .UW                   ( TbAxiUserWidth     ),
     // To profile the xbar, the slave always has to be ready
-    .AX_MAX_WAIT_CYCLES   ( 1                  ),
+    .AX_MIN_WAIT_CYCLES   ( 4                  ),
+    .AX_MAX_WAIT_CYCLES   ( 5                  ),
     .R_MAX_WAIT_CYCLES    ( 1                  ),
     .RESP_MAX_WAIT_CYCLES ( 1                  ),
     // Stimuli application and test time
@@ -295,7 +296,7 @@ module tb_axi_xbar_hulk #(
   initial begin
     axi_cluster_master = new( master_dv[1] );
     end_of_sim[1] <= 1'b0;
-    axi_cluster_master.add_memory_region(AddrMap[1].start_addr,
+    axi_cluster_master.add_memory_region(AddrMap[0].start_addr,
                                     AddrMap[xbar_cfg.NoAddrRules-1].end_addr,
                                     axi_pkg::DEVICE_NONBUFFERABLE);
     axi_cluster_master.reset();

@@ -4,10 +4,10 @@ import matplotlib.pyplot as plt
 data0 = np.loadtxt("traces_ID_0.dat", delimiter="," ,skiprows=1)
 data1 = np.loadtxt("traces_ID_1.dat", delimiter="," ,skiprows=1)
 
-data0r = np.delete(data0, np.where(data0[:,1]==0),0)
-data0w = np.delete(data0, np.where(data0[:,1]==1),0)
-data1r = np.delete(data1, np.where(data1[:,1]==0),0)
-data1w = np.delete(data1, np.where(data1[:,1]==1),0)
+data0r = np.delete(data0, np.where(data0[:,1]==1),0)
+data0w = np.delete(data0, np.where(data0[:,1]==0),0)
+data1r = np.delete(data1, np.where(data1[:,1]==1),0)
+data1w = np.delete(data1, np.where(data1[:,1]==0),0)
 
 fig = plt.figure()
 ax0 = fig.add_subplot(121)
