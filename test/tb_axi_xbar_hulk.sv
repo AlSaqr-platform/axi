@@ -53,21 +53,23 @@ module tb_axi_xbar_hulk #(
   localparam time ApplTime =  2ns;
   localparam time TestTime =  8ns;
 
-  localparam int ClAxiPeriod = 100;
+  localparam int ClAxiPeriod = 16;
   localparam int ClAxiNumWR  = 8;
   localparam int ClAxiNumRd  = 8;
   localparam int ClAxiBSize  = 8; 
   localparam int ClMaxWrInfl = 8;
   localparam int ClMaxRdInfl = 8;
-  localparam int MaxClAXWaitTime = ClAxiPeriod / (ClAxiNumWR + ClAxiNumRd);
+  localparam int MaxClAXWaitTime = 0;
+//ClAxiPeriod / (ClAxiNumWR + ClAxiNumRd);
    
-  localparam int HoAxiPeriod = 100;
+  localparam int HoAxiPeriod = 16;
   localparam int HoAxiNumWR  = 8;
   localparam int HoAxiNumRd  = 8;
-  localparam int HoAxiBSize  = 13;
+  localparam int HoAxiBSize  = 8;
   localparam int HoMaxWrInfl = 8;
   localparam int HoMaxRdInfl = 8;
-  localparam int MaxHoAXWaitTime = HoAxiPeriod / (HoAxiNumWR + HoAxiNumRd);
+  localparam int MaxHoAXWaitTime = 0;
+//HoAxiPeriod / (HoAxiNumWR + HoAxiNumRd);
 
   // AXI configuration which is automatically derived.
   localparam int unsigned TbAxiIdWidthSlaves =  TbAxiIdWidthMasters + $clog2(TbNumMasters);
@@ -140,8 +142,8 @@ module tb_axi_xbar_hulk #(
     // Traffic shaping to benchmark
     .TRAFFIC_SHAPING      ( 1                   ),
     .AX_MAX_WAIT_CYCLES   ( MaxHoAXWaitTime     ),
-    .W_MAX_WAIT_CYCLES    ( 1                   ),
-    .RESP_MAX_WAIT_CYCLES ( 1                   ),
+    .W_MAX_WAIT_CYCLES    ( 0                   ),
+    .RESP_MAX_WAIT_CYCLES ( 0                   ),
     // Maximum number of read and write 
     // transactions in flight
     .MAX_READ_TXNS        ( HoMaxRdInfl         ),
@@ -181,10 +183,10 @@ module tb_axi_xbar_hulk #(
     .IW                   ( TbAxiIdWidthSlaves ),
     .UW                   ( TbAxiUserWidth     ),
     // To profile the xbar, the slave always has to be ready
-    .AX_MIN_WAIT_CYCLES   ( 4                  ),
-    .AX_MAX_WAIT_CYCLES   ( 5                  ),
-    .R_MAX_WAIT_CYCLES    ( 1                  ),
-    .RESP_MAX_WAIT_CYCLES ( 1                  ),
+    .AX_MIN_WAIT_CYCLES   ( 0                  ),
+    .AX_MAX_WAIT_CYCLES   ( 0                  ),
+    .R_MAX_WAIT_CYCLES    ( 0                  ),
+    .RESP_MAX_WAIT_CYCLES ( 0                  ),
     // Stimuli application and test time
     .TA                   ( ApplTime           ),
     .TT                   ( TestTime           )
@@ -198,6 +200,18 @@ module tb_axi_xbar_hulk #(
     // Stimuli application and test time
     .TT ( TestTime           )
   ) axi_tracer_t;
+  typedef axi_test::axi_latency_tracer #(
+    .AW          ( TbAxiAddrWidth       ),
+    .DW          ( TbAxiDataWidth       ),
+    .IW          ( TbAxiIdWidthMasters  ),
+    .UW          ( TbAxiUserWidth       ),
+    .NumSlaves   ( TbNumSlaves          ),
+    .NoAddrRules ( xbar_cfg.NoAddrRules ),
+    .rule_t      ( rule_t               ),
+    .AddrMap     ( AddrMap              ),
+    // Stimuli application and test time
+    .TT ( TestTime           )
+  ) axi_latency_tracer_t;
 
   // -------------
   // DUT signals
@@ -280,9 +294,9 @@ module tb_axi_xbar_hulk #(
   initial begin
     axi_cva6_master = new( master_dv[0] );
     end_of_sim[0] <= 1'b0;
-    axi_cva6_master.add_memory_region(AddrMap[0].start_addr,
-                                    AddrMap[xbar_cfg.NoAddrRules-1].end_addr,
-                                    axi_pkg::DEVICE_NONBUFFERABLE);
+    axi_cva6_master.add_memory_region(AddrMap[0].start_addr,AddrMap[0].end_addr,axi_pkg::DEVICE_NONBUFFERABLE);
+//                                    AddrMap[xbar_cfg.NoAddrRules-1].end_addr,
+//                                    axi_pkg::DEVICE_NONBUFFERABLE);
     axi_cva6_master.reset();
     @(posedge rst_n);
     /* Traffic shaping works as follows:
@@ -296,9 +310,10 @@ module tb_axi_xbar_hulk #(
   initial begin
     axi_cluster_master = new( master_dv[1] );
     end_of_sim[1] <= 1'b0;
-    axi_cluster_master.add_memory_region(AddrMap[0].start_addr,
-                                    AddrMap[xbar_cfg.NoAddrRules-1].end_addr,
-                                    axi_pkg::DEVICE_NONBUFFERABLE);
+    axi_cluster_master.add_memory_region(AddrMap[0].start_addr,AddrMap[0].end_addr,axi_pkg::DEVICE_NONBUFFERABLE);
+//    axi_cluster_master.add_memory_region(AddrMap[0].start_addr,
+//                                    AddrMap[xbar_cfg.NoAddrRules-1].end_addr,
+//                                    axi_pkg::DEVICE_NONBUFFERABLE);
     axi_cluster_master.reset();
     @(posedge rst_n);
     /* Traffic shaping works as follows:
@@ -319,6 +334,17 @@ module tb_axi_xbar_hulk #(
   initial begin
     @(posedge rst_n);
     axi_cluster_tracer.trace();
+  end
+
+  axi_latency_tracer_t cva6_latency_tracer = new( 0, master_monitor_dv[0], slave_monitor_dv );
+  initial begin 
+    @(posedge rst_n);
+    cva6_latency_tracer.trace();
+  end
+  axi_latency_tracer_t cluster_latency_tracer = new( 1, master_monitor_dv[1], slave_monitor_dv );
+  initial begin 
+    @(posedge rst_n);
+    cluster_latency_tracer.trace();
   end
 
   `AXI_ASSIGN_MONITOR(master_tracer_dv[0],master_monitor_dv[0])
@@ -360,6 +386,7 @@ module tb_axi_xbar_hulk #(
       end while (1'b1);
     join
   end
+
 
   //-----------------------------------
   // Clock generator
