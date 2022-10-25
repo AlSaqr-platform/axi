@@ -38,7 +38,7 @@ module tb_axi_xbar_hulk #(
   /// Data width of the AXI channels.
   parameter int unsigned TbAxiDataWidth      = 32'd64,
   /// Pipeline stages in the xbar itself (between demux and mux).
-  parameter int unsigned TbPipeline          = 32'd1,
+  parameter int unsigned TbPipeline          = 32'd0,
   /// Enable ATOP generation
   parameter bit          TbEnAtop            = 1'b0,
   /// Enable exclusive accesses

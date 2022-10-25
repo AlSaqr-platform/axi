@@ -2251,14 +2251,18 @@ package axi_test;
              end
              
              if(decerr==0) begin
+
                 while(~this.master_axi.aw_ready) begin
                    local_trace.num_cycle_acc++;
                    cycle_end();
+                   cycle_start();
                 end
                 
-                while(~this.slaves_axi[to_slave_idx].aw_ready && (this.slaves_axi[to_slave_idx].aw_id[IW-1:0]==local_trace.ax_id) ) begin
+                while(~(this.slaves_axi[to_slave_idx].aw_valid && 
+                        (this.slaves_axi[to_slave_idx].aw_id[IW-1:0]==local_trace.ax_id)) ) begin
                    local_trace.num_cycle_lat++;
                    cycle_end();
+                   cycle_start();
                 end
                 
                 $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
@@ -2275,6 +2279,7 @@ package axi_test;
                       inflight=1;
                    end
                    cycle_end();
+                   cycle_start();
                 end
                 
                 // It is inflight now
@@ -2285,10 +2290,12 @@ package axi_test;
                       while(~this.master_axi.w_ready) begin
                          w_acc++;
                          cycle_end();
+                         cycle_start();
                       end
                       while(~this.slaves_axi[to_slave_idx].w_valid) begin
                          w_lat++;
                          cycle_end();
+                         cycle_start();
                       end
                       $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
                       fd = $fopen(filename, "a");
@@ -2298,6 +2305,7 @@ package axi_test;
                       w_lat = 0;
                    end
                    cycle_end();
+                   cycle_start();
                 end 
                 
                 // It ended
@@ -2307,13 +2315,16 @@ package axi_test;
                   if(~this.slaves_axi[to_slave_idx].b_ready) begin
                      local_trace.b_cycle_acc++;
                      cycle_end();
+                     cycle_start();
                   end
                   cycle_end();
+                  cycle_start();
                 end
                 
                 while (~this.master_axi.b_valid) begin
                    local_trace.b_cycle_lat++;
                    cycle_end();
+                   cycle_start();
                 end
                 
                 $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
@@ -2380,11 +2391,15 @@ package axi_test;
                 while(~this.master_axi.ar_ready) begin
                    local_trace.num_cycle_acc++;
                    cycle_end();
+                   cycle_start();
                 end
                 
-                while(~(this.slaves_axi[to_slave_idx].ar_ready && (this.slaves_axi[to_slave_idx].ar_id[IW-1:0]==local_trace.ax_id) && (this.slaves_axi[to_slave_idx].ar_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) ) begin
+                while(~(this.slaves_axi[to_slave_idx].ar_valid && 
+                        (this.slaves_axi[to_slave_idx].ar_id[IW-1:0]==local_trace.ax_id) && 
+                        (this.slaves_axi[to_slave_idx].ar_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) ) begin
                    local_trace.num_cycle_lat++;
                    cycle_end();
+                   cycle_start();
                 end
                 
                $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
@@ -2406,10 +2421,12 @@ package axi_test;
                       while (~this.slaves_axi[to_slave_idx].r_ready) begin
                          r_acc++;
                          cycle_end();
+                         cycle_start();
                       end
                       while (~(this.master_axi.r_valid && (this.master_axi.r_id==local_trace.ax_id))) begin
                          r_lat++;
                          cycle_end();
+                         cycle_start();
                       end
                       r_acc=0;
                       r_lat=0;
@@ -2418,7 +2435,8 @@ package axi_test;
                       $fwrite(fd,"R, %t , %t, %d, %d\n", when_issued, $time, r_acc, r_lat);
                       $fclose(fd);
                    end 
-                   cycle_end();                
+                   cycle_end();
+                   cycle_start();
                 end              
              end 
              
