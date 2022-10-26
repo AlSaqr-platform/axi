@@ -2320,13 +2320,13 @@ package axi_test;
           if(first_w_valid.size()==0) begin
             first_w_valid.push_front(1);
             when_issued = $time;
-            w_slv_idx_buff = w_slv_id[$];
             while(~this.master_axi.w_ready) begin
                w_acc++;
                cycle_end();
                cycle_start();
             end
             first_w_valid.pop_back();
+            w_slv_idx_buff = w_slv_id[$];
             fork
                begin : check_prop
                   while(~this.slaves_axi[w_slv_idx_buff].w_valid) begin
