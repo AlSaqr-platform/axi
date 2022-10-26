@@ -2272,6 +2272,8 @@ package axi_test;
                 fd = $fopen(filename, "a");
                 $fwrite(fd,"AW, %t,%t , %d, %d\n", when_issued, $time, local_trace.num_cycle_acc, local_trace.num_cycle_lat);
                 $fclose(fd);
+                
+
                 // It ended
                 local_trace.b_cycle_acc = 0;
                 local_trace.b_cycle_lat = 0;             
@@ -2303,7 +2305,7 @@ package axi_test;
           end
        end
     endtask
-
+     
     task trace_w();
        int w_acc;
        int w_lat;
@@ -2342,8 +2344,8 @@ package axi_test;
             join_none
           end
        end             
-    endtask // trace_w
-     
+    endtask 
+
     task trace_reads();
        int fd;
        string        filename;
@@ -2431,17 +2433,21 @@ package axi_test;
                          cycle_end();
                          cycle_start();
                       end
-                      while (~(this.master_axi.r_valid && (this.master_axi.r_id==local_trace.ax_id))) begin
-                         r_lat++;
-                         cycle_end();
-                         cycle_start();
-                      end
-                      r_acc=0;
-                      r_lat=0;
-                      $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
-                      fd = $fopen(filename, "a");
-                      $fwrite(fd,"R, %t , %t, %d, %d\n", when_issued_r, $time, r_acc, r_lat);
-                      $fclose(fd);
+                      fork
+                         begin : check_r_prop
+                            while (~(this.master_axi.r_valid && (this.master_axi.r_id==local_trace.ax_id))) begin
+                               r_lat++;
+                               cycle_end();
+                               cycle_start();
+                            end
+                            $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
+                            fd = $fopen(filename, "a");
+                            $fwrite(fd,"R, %t , %t, %d, %d\n", when_issued_r, $time, r_acc, r_lat);
+                            $fclose(fd);
+                            r_acc=0;
+                            r_lat=0;
+                         end
+                      join_none
                    end 
                    cycle_end();
                    cycle_start();
