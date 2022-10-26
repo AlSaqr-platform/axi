@@ -2152,6 +2152,8 @@ package axi_test;
     ax_trace_t ax_transactions[$];
     ax_id_t    aw_waiting_id[$];
     ax_id_t    ar_waiting_id[$]; 
+    int        w_slv_id[$];
+    int        first_w_valid[$];
     
     int unsigned   tracer_id;
     virtual AXI_BUS_DV #(
@@ -2197,7 +2199,7 @@ package axi_test;
       @(posedge this.master_axi.clk_i);
     endtask
 
-    task trace_writes();
+    task trace_aw_b();
        int fd;
        int decerr;
        
@@ -2223,17 +2225,15 @@ package axi_test;
              oldest=1;
              aw_waiting_id.push_front(this.master_axi.aw_id);
           end else begin
-             id_buffer_oldest = aw_waiting_id.pop_front();
+             id_buffer_oldest = aw_waiting_id[0];
              if(id_buffer_oldest==this.master_axi.aw_id) begin
                 // This process is not the oldest
                 oldest = 0;
-                aw_waiting_id.push_front(id_buffer_oldest);
              end else begin
                 oldest = 1;
-                aw_waiting_id.push_front(id_buffer_oldest);
                 aw_waiting_id.push_front(this.master_axi.aw_id);
              end
-          end // else: !if(aw_waiting_id.size()==0)
+          end 
 
           if(oldest) begin
              
@@ -2253,111 +2253,102 @@ package axi_test;
              
              if(decerr==0) begin
 
+                w_slv_id.push_front(to_slave_idx);
                 while(~this.master_axi.aw_ready) begin
                    local_trace.num_cycle_acc++;
                    cycle_end();
                    cycle_start();
                 end
 
-                fork
-                   begin : wait_for_aw_on_slv
-                      while(~(this.slaves_axi[to_slave_idx].aw_valid && 
-                              (this.slaves_axi[to_slave_idx].aw_id[IW-1:0]==local_trace.ax_id) &&
-                              (this.slaves_axi[to_slave_idx].aw_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) ) begin
-                         local_trace.num_cycle_lat++;
-                         cycle_end();
-                         cycle_start();
-                      end
-                      
-                      $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
-                      fd = $fopen(filename, "a");
-                      $fwrite(fd,"AW, %t,%t , %d, %d\n", when_issued, $time, local_trace.num_cycle_acc, local_trace.num_cycle_lat);
-                      $fclose(fd);
-                   end
-                   begin : w_channel
-                      // It is inflight now
-                      w_acc = 0;
-                      w_lat = 0;
-                      while(inflight==local_trace.ax_id) begin
-                         inflight = 0;
-                         id_buffer_w = aw_waiting_id.pop_back();
-                         if(id_buffer_w!=local_trace.ax_id) begin
-                            aw_waiting_id.push_back(id_buffer_w);
-                         end else begin
-                            inflight=1;
-                         end
-                         cycle_end();
-                         cycle_start();
-                      end
-
-                      while(~(this.master_axi.w_valid && this.master_axi.w_ready && this.master_axi.w_last)) begin
-                         if(this.master_axi.w_valid) begin
-                            fork
-                               begin : monitor_this_w
-                                  while(~this.master_axi.w_ready) begin
-                                     w_acc++;
-                                     cycle_end();
-                                     cycle_start();
-                                  end
-                                  while(~this.slaves_axi[to_slave_idx].w_valid) begin
-                                     w_lat++;
-                                     cycle_end();
-                                     cycle_start();
-                                  end
-                                  $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
-                                  fd = $fopen(filename, "a");
-                                  $fwrite(fd,"W, %t,%t , %d, %d\n", when_issued, $time, w_acc, w_lat);
-                                  $fclose(fd);
-                                  w_acc = 0;
-                                  w_lat = 0;
-                               end
-                            join_none
-                         end
-                         cycle_end();
-                         cycle_start();
-                      end
-                   end 
-                   begin : b_channel
-                      // It ended
-                      local_trace.b_cycle_acc = 0;
-                      local_trace.b_cycle_lat = 0;             
-                      while(~(this.slaves_axi[to_slave_idx].b_valid &&
-                              this.slaves_axi[to_slave_idx].b_ready &&
-                              (this.slaves_axi[to_slave_idx].b_id[IW-1:0]==local_trace.ax_id) &&
-                              (this.slaves_axi[to_slave_idx].b_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) ) begin
-                        if(this.slaves_axi[to_slave_idx].b_valid && 
-                           ~this.slaves_axi[to_slave_idx].b_ready &&
-                           (this.slaves_axi[to_slave_idx].b_id[IW-1:0]==local_trace.ax_id) &&
-                           (this.slaves_axi[to_slave_idx].b_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) begin
-                           local_trace.b_cycle_acc++;
-                        end
-                        cycle_end();
-                        cycle_start();
-                      end 
-                      aw_waiting_id.pop_back();
-                      while (~this.master_axi.b_valid) begin
-                         local_trace.b_cycle_lat++;
-                         cycle_end();
-                         cycle_start();
-                      end
-                      $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
-                      fd = $fopen(filename, "a");
-                      $fwrite(fd,"B, %t,%t , %d, %d\n", when_issued, $time, local_trace.b_cycle_acc, local_trace.b_cycle_lat);
-                      $fclose(fd);
-                   end
-                join_none
+                while(~(this.slaves_axi[to_slave_idx].aw_valid && 
+                        (this.slaves_axi[to_slave_idx].aw_id[IW-1:0]==local_trace.ax_id) &&
+                        (this.slaves_axi[to_slave_idx].aw_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) ) begin
+                   local_trace.num_cycle_lat++;
+                   cycle_end();
+                   cycle_start();
+                end
                 
-             
-             end // if (decerr!=0)
-          end // if (oldest)
-       end // if (this.master_axi.aw_valid)
-       
+                $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
+                fd = $fopen(filename, "a");
+                $fwrite(fd,"AW, %t,%t , %d, %d\n", when_issued, $time, local_trace.num_cycle_acc, local_trace.num_cycle_lat);
+                $fclose(fd);
+                // It ended
+                local_trace.b_cycle_acc = 0;
+                local_trace.b_cycle_lat = 0;             
+                while(~(this.slaves_axi[to_slave_idx].b_valid &&
+                        this.slaves_axi[to_slave_idx].b_ready &&
+                        (this.slaves_axi[to_slave_idx].b_id[IW-1:0]==local_trace.ax_id) &&
+                        (this.slaves_axi[to_slave_idx].b_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) ) begin
+                  if(this.slaves_axi[to_slave_idx].b_valid && 
+                     ~this.slaves_axi[to_slave_idx].b_ready &&
+                     (this.slaves_axi[to_slave_idx].b_id[IW-1:0]==local_trace.ax_id) &&
+                     (this.slaves_axi[to_slave_idx].b_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) begin
+                     local_trace.b_cycle_acc++;
+                  end
+                  cycle_end();
+                  cycle_start();
+                end 
+                w_slv_id.pop_back(); 
+                while (~this.master_axi.b_valid) begin
+                   local_trace.b_cycle_lat++;
+                   cycle_end();
+                   cycle_start();
+                end
+                aw_waiting_id.pop_back();
+                $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
+                fd = $fopen(filename, "a");
+                $fwrite(fd,"B, %t,%t , %d, %d\n", when_issued, $time, local_trace.b_cycle_acc, local_trace.b_cycle_lat);
+                $fclose(fd);
+             end 
+          end
+       end
     endtask
 
+    task trace_w();
+       int w_acc;
+       int w_lat;
+       int fd;
+       string        filename;
+
+       int w_slv_idx_buff;
+       
+       time when_issued;
+       w_acc = 0;
+       w_lat = 0;
+       
+       if(this.master_axi.w_valid) begin
+          if(first_w_valid.size()==0) begin
+            first_w_valid.push_front(1);
+            when_issued = $time;
+            w_slv_idx_buff = w_slv_id[$];
+            while(~this.master_axi.w_ready) begin
+               w_acc++;
+               cycle_end();
+               cycle_start();
+            end
+            first_w_valid.pop_back();
+            fork
+               begin : check_prop
+                  while(~this.slaves_axi[w_slv_idx_buff].w_valid) begin
+                     w_lat++;
+                     cycle_end();
+                     cycle_start();
+                  end
+                  $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
+                  fd = $fopen(filename, "a");
+                  $fwrite(fd,"W, %t,%t , %d, %d\n", when_issued, $time, w_acc, w_lat);
+                  $fclose(fd);
+               end
+            join_none
+          end
+       end             
+    endtask // trace_w
+     
     task trace_reads();
        int fd;
        string        filename;
        time          when_issued;
+       time          when_issued_r;
        idx_slv_t     to_slave_idx;
 
        int           decerr;
@@ -2434,6 +2425,7 @@ package axi_test;
                    if( this.slaves_axi[to_slave_idx].r_valid && 
                        (this.slaves_axi[to_slave_idx].r_id[IW-1:0]==local_trace.ax_id) &&
                        (this.slaves_axi[to_slave_idx].r_id[M_SEL_WIDTH+IW-1:IW]==tracer_id) ) begin
+                      when_issued_r = $time;
                       while (~this.slaves_axi[to_slave_idx].r_ready) begin
                          r_acc++;
                          cycle_end();
@@ -2448,7 +2440,7 @@ package axi_test;
                       r_lat=0;
                       $sformat(filename,"traces_LAT_%0d.dat",tracer_id);
                       fd = $fopen(filename, "a");
-                      $fwrite(fd,"R, %t , %t, %d, %d\n", when_issued, $time, r_acc, r_lat);
+                      $fwrite(fd,"R, %t , %t, %d, %d\n", when_issued_r, $time, r_acc, r_lat);
                       $fclose(fd);
                    end 
                    cycle_end();
@@ -2478,7 +2470,10 @@ package axi_test;
            cycle_start();
            Trace: fork
               proc_aw: begin
-                 trace_writes();
+                 trace_aw_b();
+              end
+              proc_w: begin
+                 trace_w();
               end
               proc_ar: begin
                  trace_reads();
