@@ -16,6 +16,10 @@ def print_channel(df,chans):
             axis[i].set_xlabel('Time [ns]')
             axis[i].set_ylabel('Number of cycles')
             axis[i].set_title(chan)
+            if(chan=="AW"):
+                axis[i].axhline(y=72,xmin=0,xmax=to_plot["t_val"].max())
+            if(chan=="W"):
+                axis[i].axhline(y=64,xmin=0,xmax=to_plot["t_val"].max())
             i = i+1
     plt.show()
                   

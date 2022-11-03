@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def print_channel(df,chans,worst_case):
+def print_channel(df,chans,worst_case,n_slv):
     num_rows = len(chans)
     print(num_rows)
     figure, ax = plt.subplots(num_rows,1)
@@ -23,10 +23,11 @@ def print_channel(df,chans,worst_case):
             ax[i].set_ylabel('Number of cycles')
             if(chan=="W"):
                 ax[i].set_title('Whole write transaction')
+                ax[i].axhline(y=worst_case,xmin=0,xmax=to_plot["t_val"].max())
             else:
                 ax[i].set_title('Whole read transaction')
+                ax[i].axhline(y=n_slv*worst_case,xmin=0,xmax=to_plot["t_val"].max())
             print(to_plot["t_val"].max())
-            ax[i].axhline(y=worst_case,xmin=0,xmax=to_plot["t_val"].max())
             i = i+1
     plt.show()
                   
@@ -36,8 +37,9 @@ print(data.head())
 print(data["W/R"].unique())
 w_chan = ["W","R"]
 n_mast = 2
+n_slv = 2
 n_out = 8
-B = 8
+B = 8 + 1
 worst_case = n_mast * n_out * B
-print_channel(data,w_chan,worst_case)
+print_channel(data,w_chan,worst_case,n_slv)
 
