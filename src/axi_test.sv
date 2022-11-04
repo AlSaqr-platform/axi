@@ -699,6 +699,7 @@ package axi_test;
     parameter int   RESP_MAX_WAIT_CYCLES = 20,
     // AXI feature usage
     parameter int   AXI_MAX_BURST_LEN = 0, // maximum number of beats in burst; 0 = AXI max (256)
+    parameter int   AXI_ADDR_ALIGNED = 0, // in case you want only aligned accesses
     parameter int   TRAFFIC_SHAPING   = 0,
     parameter bit   AXI_EXCLS         = 1'b0,
     parameter bit   AXI_ATOPS         = 1'b0,
@@ -940,7 +941,11 @@ package axi_test;
         end
       end
 
-      ax_beat.ax_addr = addr;
+      if(AXI_ADDR_ALIGNED) begin
+         ax_beat.ax_addr = axi_pkg::aligned_addr(addr, ax_beat.ax_size);
+      end else begin
+         ax_beat.ax_addr = addr;
+      end
       rand_success = std::randomize(id); assert(rand_success);
       rand_success = std::randomize(qos); assert(rand_success);
       // The random ID *must* be legalized with `legalize_id()` before the beat is sent!  This is
