@@ -18,13 +18,14 @@ ax0.plot(data1w[:,1].astype(float), data1w[:,7].astype(float),'--x', color='cyan
 mean0w = np.mean(data0w[:,7].astype(float))
 mean1w = np.mean(data1w[:,7].astype(float))
 
-max_time = np.max([data0w[-1,1].astype(float),data1w[-1,1].astype(float)])
+min_time = np.min([data0w[-1,1].astype(float),data1w[-1,1].astype(float)])
+max_time = np.max([data0w[0,1].astype(float),data1w[0,1].astype(float)])
 
-ax0.hlines(mean0w,0,max_time, color='red')
-ax0.hlines(mean1w,0,max_time, color='cyan')
+ax0.hlines(mean0w,min_time,max_time, color='red')
+ax0.hlines(mean1w,min_time,max_time, color='cyan')
 
 plt.ylabel('Util')
-plt.xlabel('Time [ns].astype(float)')
+plt.xlabel('Time [ns]')
 plt.legend()
 
 ax2 = fig.add_subplot(221)
@@ -44,8 +45,9 @@ mean0r = np.mean(data0r[:,7].astype(float))
 mean1r = np.mean(data1r[:,7].astype(float))
 
 max_time = np.max([data0r[-1,1].astype(float),data1r[-1,1].astype(float)])
-ax1.hlines(mean0r,0,max_time, color='blue')
-ax1.hlines(mean1r,0,max_time, color='black')
+min_time = np.min([data0r[0,1].astype(float),data1r[0,1].astype(float)])
+ax1.hlines(mean0r,min_time,max_time, color='blue')
+ax1.hlines(mean1r,min_time,max_time, color='black')
 
 plt.ylabel('Util')
 plt.xlabel('Time [ns]')

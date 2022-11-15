@@ -2001,9 +2001,9 @@ package axi_test;
 
              ax_transactions.push_back(local_trace);
              aw_waiting_id.pop_back();
-             $sformat(filename,"traces_ID_%0d.dat",tracer_id);
+             $sformat(filename,"traces_rw.dat");
              fd = $fopen(filename, "a");
-             $fwrite(fd,"%t, %t ,W, %b, %d, %d, %d, %f\n", when_issued, $time, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
+             $fwrite(fd,"%t, %t, %d,W, %b, %d, %d, %d, %f\n", when_issued, $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
              $fclose(fd);
              
           end 
@@ -2064,9 +2064,9 @@ package axi_test;
              $display("%0tns > ID %d AR tran id %b: accept latency %d, len %d, transfer cycles %d, utilization %f", $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
              
              ax_transactions.push_back(local_trace);
-             $sformat(filename,"traces_ID_%0d.dat",tracer_id);
+             $sformat(filename,"traces_rw.dat");
              fd = $fopen(filename, "a");
-             $fwrite(fd,"%t , %t,R, %b, %d, %d, %d, %f\n", when_issued, $time, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
+             $fwrite(fd,"%t, %t, %d,R, %b, %d, %d, %d, %f\n", when_issued, $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
              $fclose(fd);
 
           end 
@@ -2081,9 +2081,9 @@ package axi_test;
         string        filename;
 
         begin
-             $sformat(filename,"traces_ID_%0d.dat",tracer_id);
+             $sformat(filename,"traces_rw.dat");
              fd = $fopen(filename, "w");
-             $fwrite(fd,"t_val,t_end,W/R,AX_ID,ACC,LEN,CHAN,UTIL\n",);
+             $fwrite(fd,"t_val,t_end,ID,W/R,AX_ID,ACC,LEN,CHAN,UTIL\n",);
              $fclose(fd);
         end
 
