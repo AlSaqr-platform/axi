@@ -135,3 +135,4 @@ sources:
       - test/tb_axi_xbar.sv
       - test/tb_ace_xbar.sv
       - test/tb_ace_ccu_top.sv
+      - test/tb_axi_xbar_hulk.sv

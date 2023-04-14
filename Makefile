@@ -19,6 +19,8 @@ else
 	SYNOPSYS_DC ?= dc_shell
 endif
 
+VLOG_ARGS += -suppress vlog-2583 -suppress vlog-13314 -suppress vlog-13233 -timescale \"1 ns / 1 ps\"
+
 TBS         ?= axi_addr_test \
                axi_atop_filter \
                axi_cdc axi_delayer \
@@ -88,3 +90,13 @@ sim-%.log: compile.log
 clean:
 	rm -rf build
 	rm -f  *.log
+
+
+define generate_vsim
+	echo 'set ROOT [file normalize [file dirname [info script]]/$3]' > $1
+	bender script vsim --vlog-arg="$(VLOG_ARGS)" $2 | grep -v "set ROOT" >> $1
+	echo >> $1
+endef
+
+scripts/compile_vsim.tcl: Bender.yml
+	$(call generate_vsim, $@, -t rtl -t test,..)
