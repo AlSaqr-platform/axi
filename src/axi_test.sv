@@ -1893,7 +1893,7 @@ package axi_test;
     /// AXI4+ATOP user width
     parameter int unsigned UW = 0,
     /// Stimuli test time
-    parameter time TT = 0ns
+    parameter time         TT = 0ns
   );
 
     typedef logic [IW-1:0] ax_id_t;
@@ -1960,6 +1960,7 @@ package axi_test;
              // There are no inflight transactions, enqueue the first
              oldest=1;
              aw_waiting_id.push_front(this.bus_axi.aw_id);
+             id_buffer = this.bus_axi.aw_id;
           end else begin
              id_buffer = aw_waiting_id.pop_front();
              if(id_buffer==this.bus_axi.aw_id) begin
@@ -1970,6 +1971,7 @@ package axi_test;
                 oldest = 1;
                 aw_waiting_id.push_front(id_buffer);
                 aw_waiting_id.push_front(this.bus_axi.aw_id);
+                id_buffer = this.bus_axi.aw_id;
              end
           end // else: !if(aw_waiting_id.size()==0)
 
@@ -1997,10 +1999,13 @@ package axi_test;
              else
                local_trace.chan_util = real'( local_trace.ax_len + 1 ) / ( real'(local_trace.num_cycle_acc) + real'(local_trace.num_cycle_com) + 2 );
              
-             $display("%0tns > ID %d AW tran id %b: accept latency %d, len %d, transfer cycles %d, utilization %f", $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
-
              ax_transactions.push_back(local_trace);
-             aw_waiting_id.pop_back();
+             for(int j = aw_waiting_id.size(); j>0 ; j--) begin
+                if(aw_waiting_id[j-1]==id_buffer) begin
+                   aw_waiting_id.delete(j-1);
+                   break;
+                end
+             end
              $sformat(filename,"traces_rw.dat");
              fd = $fopen(filename, "a");
              $fwrite(fd,"%t, %t, %d,W, %b, %d, %d, %d, %f\n", when_issued, $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
@@ -2031,6 +2036,7 @@ package axi_test;
              // There are no inflight transactions, enqueue the first
              oldest=1;
              ar_waiting_id.push_front(this.bus_axi.ar_id);
+             id_buffer = this.bus_axi.ar_id;
           end else begin
              id_buffer = ar_waiting_id.pop_front();
              if(id_buffer==this.bus_axi.ar_id) begin
@@ -2041,6 +2047,7 @@ package axi_test;
                 oldest = 1;
                 ar_waiting_id.push_front(id_buffer);
                 ar_waiting_id.push_front(this.bus_axi.ar_id);
+                id_buffer = this.bus_axi.ar_id;
              end
           end 
 
@@ -2061,9 +2068,13 @@ package axi_test;
              else
                local_trace.chan_util = real'( local_trace.ax_len + 1 ) / ( real'(local_trace.num_cycle_acc) + real'(local_trace.num_cycle_com)  + 2 );
              
-             $display("%0tns > ID %d AR tran id %b: accept latency %d, len %d, transfer cycles %d, utilization %f", $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
-             
              ax_transactions.push_back(local_trace);
+             for(int j = ar_waiting_id.size(); j>0 ; j--) begin
+                if(ar_waiting_id[j-1]==id_buffer) begin
+                   ar_waiting_id.delete(j-1);
+                   break;
+                end
+             end
              $sformat(filename,"traces_rw.dat");
              fd = $fopen(filename, "a");
              $fwrite(fd,"%t, %t, %d,R, %b, %d, %d, %d, %f\n", when_issued, $time, tracer_id, local_trace.ax_id, local_trace.num_cycle_acc, local_trace.ax_len, local_trace.num_cycle_com, local_trace.chan_util);
