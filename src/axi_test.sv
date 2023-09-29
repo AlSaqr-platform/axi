@@ -1166,6 +1166,8 @@ package axi_test;
             end
             cnt_sem.put();
           end
+        end else begin
+           rand_wait(1,1);
         end
       end
     endtask
