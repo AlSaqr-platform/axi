@@ -1989,7 +1989,7 @@ package axi_test;
 
 
              while( ~(this.bus_axi.b_valid && this.bus_axi.b_ready && (this.bus_axi.b_id == local_trace.ax_id) ) ) begin
-                if(this.bus_axi.w_valid) local_trace.num_cycle_com++;
+                local_trace.num_cycle_com++;
                 cycle_end();
              end
 
