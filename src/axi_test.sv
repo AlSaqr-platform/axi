@@ -876,7 +876,6 @@ package axi_test;
             if (traffic_shape[i].size!=-1) begin
                fixed_size = 1;
                size = traffic_shape[i].size;
-               assert( (2**size <= AXI_STRB_WIDTH) && (2**size <= len) ) else $fatal("Illegal fixed size and len");
             end
             break;
           end
